@@ -1,9 +1,9 @@
 #include <linux/fs.h>
+#include <linux/ioctl.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/slab.h>
 #include <linux/uaccess.h>
-#include <linux/ioctl.h>
 
 #define DEVICE_NAME "solution_node"
 #define MAJOR_NUMBER 212
@@ -20,6 +20,9 @@ static int counter = 0;
 static int solution_open(struct inode *inode, struct file *file) {
   struct session_data *session =
       kmalloc(sizeof(struct session_data), GFP_KERNEL);
+
+  printk(KERN_INFO "kernel_mooc Openening new session\n");
+
   if (!session) {
     printk(KERN_ALERT "Unable to allocate memory for session\n");
     return -ENOMEM;
@@ -51,22 +54,26 @@ static bool read = false;
 static ssize_t solution_read(struct file *file, char __user *buf, size_t lbuf,
                              loff_t *ppos) {
   int res;
+  size_t len;
   struct session_data *session = file->private_data;
 
   if (read) {
     read = false;
     return 0;
   }
-  read = true;
 
-  printk(KERN_INFO "kernel_mooc In read. Session id: %d", session->id);
+  printk(KERN_INFO "kernel_mooc Reading with session %d, lbuf: %d, ppos: %llu",
+         session->id, lbuf, *ppos);
 
-  if (session->position == -1) {
-    printk(KERN_INFO "kernel_mooc First read, return the session ID as a string: %d", session->id);
+  if (session->position == 0) {
+    printk(KERN_INFO
+           "kernel_mooc First read, return the session ID as a string: %d",
+           session->id);
 
     char session_id_str[2];
     snprintf(session_id_str, sizeof(session_id_str), "%d", session->id);
-    size_t len = strlen(session_id_str);
+
+    len = strlen(session_id_str);
 
     res = copy_to_user(buf, session_id_str, len);
     if (res != 0) {
@@ -75,29 +82,36 @@ static ssize_t solution_read(struct file *file, char __user *buf, size_t lbuf,
     }
 
     *ppos += len;
+    file->f_pos += len;
     session->position += len;
-
-    return len;
+    pr_info("kernel_mooc sid: %d, ppos: %llu, f_pos: %llu", session->id, *ppos, file->f_pos);
   } else {
-    printk(KERN_INFO "kernel_mooc Subsequent reads, return the string stored in the buffer: %d", session->id);
+    printk(KERN_INFO "kernel_mooc Subsequent reads, return the string stored "
+                     "in the buffer: %d",
+           session->id);
 
     size_t remaining_length = strlen(session->buffer) - session->position;
-    size_t read_length = min(lbuf, remaining_length);
+    len = min(lbuf, remaining_length);
 
-    res = copy_to_user(buf, session->buffer + session->position, read_length);
+    res = copy_to_user(buf, session->buffer + session->position, len);
     if (res != 0) {
       printk(KERN_ALERT "kernel_mooc Failed to copy data to user buffer\n");
       return -EFAULT;
     }
 
-    session->position += read_length;
-    return read_length;
+    session->position += len;
   }
+
+  read = true;
+  return len;
 }
 
 static ssize_t solution_write(struct file *file, const char __user *buf,
                               size_t lbuf, loff_t *ppos) {
   struct session_data *session = file->private_data;
+
+  printk(KERN_INFO "kernel_mooc Writing with session %d, lbuf: %d, ppos: %llu",
+         session->id, lbuf, *ppos);
 
   if (lbuf > MAX_BUFFER_SIZE) {
     printk(KERN_ALERT "kernel_mooc Data exceeds maximum buffer size\n");
@@ -109,18 +123,21 @@ static ssize_t solution_write(struct file *file, const char __user *buf,
     return -EFAULT;
   }
 
-  session->position = lbuf;
+  session->position += lbuf;
   session->buffer[lbuf] = '\0';
+
+  printk(KERN_INFO "kernel_mooc Wrote %s with session %d", session->buffer,
+         session->id);
 
   return lbuf;
 }
 
 static loff_t solution_llseek(struct file *file, loff_t off, int whence) {
-  char *kbuf = file->private_data;
+  struct session_data *session = file->private_data;
+
   loff_t new_pos;
 
-  printk(KERN_INFO "kernel_mooc In llseek, off: %llu, wehnce: %d", off,
-         whence);
+  printk(KERN_INFO "kernel_mooc In llseek, off: %llu, wehnce: %d", off, whence);
 
   switch (whence) {
   case 0:
@@ -129,11 +146,11 @@ static loff_t solution_llseek(struct file *file, loff_t off, int whence) {
     break;
   case 1:
     printk(KERN_INFO "kernel_mooc SEEK_CUR");
-    new_pos = file->f_pos + off;
+    new_pos = session->position + off;
     break;
   case 2:
     printk(KERN_INFO "kernel_mooc SEEK_END");
-    new_pos = strlen(kbuf) + off;
+    new_pos = strlen(session->buffer) + off;
     break;
   default:
     return -EINVAL;
@@ -142,8 +159,9 @@ static loff_t solution_llseek(struct file *file, loff_t off, int whence) {
   if (new_pos < 0)
     return -EINVAL;
 
-  file->f_pos = new_pos;
-  printk(KERN_INFO "kernel_mooc f_pos is set to %llu", new_pos);
+  session->position = new_pos;
+  // file->f_pos = new_pos;
+  // printk(KERN_INFO "kernel_mooc f_pos is set to %llu", new_pos);
 
   return new_pos;
 }
