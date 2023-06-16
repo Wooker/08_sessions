@@ -17,3 +17,6 @@ unload:
 node:
 	sudo mknod /dev/solution_node c 212 0
 	sudo chmod a+rw /dev/solution_node
+
+app:
+	gcc -o app app.c
