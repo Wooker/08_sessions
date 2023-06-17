@@ -26,25 +26,26 @@ int main() {
   }
   printf("Device opened\n");
 
-  // printf("Enter the IOCTL to send (0 length, 1 content)\n");
-  // scanf("%d", &a);
-
   printf("Reading\n");
   fread(content, sizeof(char), 1, fp);
   printf("Read %s.\n", content);
 
-  printf("Writing\n");
-  char *word = "test";
-  fwrite(word, sizeof(char), strlen(word), fp);
-  printf("Wrote %s.\n", word);
+  // printf("Writing\n");
+  // char *word = "test";
+  // fwrite(word, sizeof(char), strlen(word), fp);
+  // printf("Wrote %s.\n", word);
+
+  // printf("Reading\n");
+  // fread(content, sizeof(char), 4, fp);
+  // printf("Read %s.\n", content);
+
+  printf("Seeking\n");
+  fseek(fp, -1, SEEK_CUR);
+  printf("Seeked\n");
 
   printf("Reading\n");
   fread(content, sizeof(char), 1, fp);
   printf("Read %s.\n", content);
-
-  // printf("Seeking\n");
-  // fseek(fp, 2, SEEK_SET);
-  // printf("Seeked\n");
 
   printf("Closing Driver\n");
   fclose(fp);
